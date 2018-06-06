@@ -2,6 +2,7 @@ import { TextDocument } from 'vscode-languageserver';
 
 export interface LanguageModelCache<T> {
   get(document: TextDocument): T;
+  getByUri(uri: string): T | undefined;
   onDocumentRemoved(document: TextDocument): void;
   dispose(): void;
 }
@@ -60,6 +61,12 @@ export function getLanguageModelCache<T>(
         }
       }
       return languageModel;
+    },
+    getByUri(uri: string): T | undefined {
+      const langaugeModelInfo = languageModels[uri];
+      if (langaugeModelInfo) {
+        return langaugeModelInfo.languageModel;
+      }
     },
     onDocumentRemoved(document: TextDocument) {
       const uri = document.uri;

@@ -14,7 +14,8 @@ import {
   Range,
   DocumentSymbolParams,
   Position,
-  TextDocumentChangeEvent
+  TextDocumentChangeEvent,
+  WorkspaceEdit
 } from 'vscode-languageserver-types';
 import {
   ColorInformation,
@@ -30,7 +31,8 @@ import {
   DocumentLinkParams,
   DocumentFormattingParams,
   DidChangeConfigurationParams,
-  FileChangeType
+  FileChangeType,
+  RenameParams
 } from 'vscode-languageserver';
 import Uri from 'vscode-uri';
 import * as path from 'path';
@@ -91,6 +93,7 @@ export class VLS {
     this.lspConnection.onDocumentSymbol(this.onDocumentSymbol.bind(this));
     this.lspConnection.onHover(this.onHover.bind(this));
     this.lspConnection.onReferences(this.onReferences.bind(this));
+    this.lspConnection.onRenameRequest(this.onRenameRequest.bind(this));
     this.lspConnection.onSignatureHelp(this.onSignatureHelp.bind(this));
 
     this.lspConnection.onRequest(DocumentColorRequest.type, this.onDocumentColors.bind(this));
@@ -192,24 +195,6 @@ export class VLS {
     return item;
   }
 
-  onHover({ textDocument, position }: TextDocumentPositionParams): Hover {
-    const doc = this.documentService.getDocument(textDocument.uri);
-    const mode = this.languageModes.getModeAtPosition(doc, position);
-    if (mode && mode.doHover) {
-      return mode.doHover(doc, position);
-    }
-    return NULL_HOVER;
-  }
-
-  onDocumentHighlight({ textDocument, position }: TextDocumentPositionParams): DocumentHighlight[] {
-    const doc = this.documentService.getDocument(textDocument.uri);
-    const mode = this.languageModes.getModeAtPosition(doc, position);
-    if (mode && mode.findDocumentHighlight) {
-      return mode.findDocumentHighlight(doc, position);
-    }
-    return [];
-  }
-
   onDefinition({ textDocument, position }: TextDocumentPositionParams): Definition {
     const doc = this.documentService.getDocument(textDocument.uri);
     const mode = this.languageModes.getModeAtPosition(doc, position);
@@ -219,11 +204,32 @@ export class VLS {
     return [];
   }
 
-  onReferences({ textDocument, position }: TextDocumentPositionParams): Location[] {
+  onDocumentColors({ textDocument }: DocumentColorParams): ColorInformation[] {
+    const doc = this.documentService.getDocument(textDocument.uri);
+    const colors: ColorInformation[] = [];
+
+    this.languageModes.getAllModesInDocument(doc).forEach(m => {
+      if (m.findDocumentColors) {
+        pushAll(colors, m.findDocumentColors(doc));
+      }
+    });
+    return colors;
+  }
+
+  onColorPresentations({ textDocument, color, range }: ColorPresentationParams): ColorPresentation[] {
+    const doc = this.documentService.getDocument(textDocument.uri);
+    const mode = this.languageModes.getModeAtPosition(doc, range.start);
+    if (mode && mode.getColorPresentations) {
+      return mode.getColorPresentations(doc, color, range);
+    }
+    return [];
+  }
+
+  onDocumentHighlight({ textDocument, position }: TextDocumentPositionParams): DocumentHighlight[] {
     const doc = this.documentService.getDocument(textDocument.uri);
     const mode = this.languageModes.getModeAtPosition(doc, position);
-    if (mode && mode.findReferences) {
-      return mode.findReferences(doc, position);
+    if (mode && mode.findDocumentHighlight) {
+      return mode.findDocumentHighlight(doc, position);
     }
     return [];
   }
@@ -265,25 +271,32 @@ export class VLS {
     return symbols;
   }
 
-  onDocumentColors({ textDocument }: DocumentColorParams): ColorInformation[] {
+  onHover({ textDocument, position }: TextDocumentPositionParams): Hover {
     const doc = this.documentService.getDocument(textDocument.uri);
-    const colors: ColorInformation[] = [];
-
-    this.languageModes.getAllModesInDocument(doc).forEach(m => {
-      if (m.findDocumentColors) {
-        pushAll(colors, m.findDocumentColors(doc));
-      }
-    });
-    return colors;
+    const mode = this.languageModes.getModeAtPosition(doc, position);
+    if (mode && mode.doHover) {
+      return mode.doHover(doc, position);
+    }
+    return NULL_HOVER;
   }
 
-  onColorPresentations({ textDocument, color, range }: ColorPresentationParams): ColorPresentation[] {
+  onReferences({ textDocument, position }: TextDocumentPositionParams): Location[] {
     const doc = this.documentService.getDocument(textDocument.uri);
-    const mode = this.languageModes.getModeAtPosition(doc, range.start);
-    if (mode && mode.getColorPresentations) {
-      return mode.getColorPresentations(doc, color, range);
+    const mode = this.languageModes.getModeAtPosition(doc, position);
+    if (mode && mode.findReferences) {
+      return mode.findReferences(doc, position);
     }
     return [];
+  }
+
+  onRenameRequest({ newName, textDocument, position}: RenameParams): WorkspaceEdit {
+    const doc = this.documentService.getDocument(textDocument.uri);
+    const mode = this.languageModes.getModeAtPosition(doc, position);
+
+    if (mode && mode.doRename) {
+      return mode.doRename(doc, position, newName);
+    }
+    return {};
   }
 
   onSignatureHelp({ textDocument, position }: TextDocumentPositionParams): SignatureHelp {

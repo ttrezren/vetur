@@ -13,7 +13,8 @@ import {
   CompletionList,
   Position,
   FormattingOptions,
-  SymbolInformation
+  SymbolInformation,
+  WorkspaceEdit
 } from 'vscode-languageserver-types';
 import {
   Color, ColorInformation, ColorPresentation
@@ -34,6 +35,7 @@ export interface LanguageMode {
   doValidation?(document: TextDocument): Diagnostic[];
   doComplete?(document: TextDocument, position: Position): CompletionList;
   doResolve?(document: TextDocument, item: CompletionItem): CompletionItem;
+  doRename?(document: TextDocument, position: Position, newName: string): WorkspaceEdit;
   doHover?(document: TextDocument, position: Position): Hover;
   doSignatureHelp?(document: TextDocument, position: Position): SignatureHelp;
   findDocumentHighlight?(document: TextDocument, position: Position): DocumentHighlight[];

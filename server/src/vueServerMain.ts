@@ -38,14 +38,15 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
   const capabilities = {
     textDocumentSync: (TextDocumentSyncKind.Full as any),
     completionProvider: { resolveProvider: true, triggerCharacters: ['.', ':', '<', '"', '\'', '/', '@', '*'] },
-    signatureHelpProvider: { triggerCharacters: ['('] },
+    colorProvider: true,
+    definitionProvider: true,
     documentFormattingProvider: true,
-    hoverProvider: true,
     documentHighlightProvider: true,
     documentSymbolProvider: true,
-    definitionProvider: true,
+    hoverProvider: true,
     referencesProvider: true,
-    colorProvider: true
+    renameProvider: true,
+    signatureHelpProvider: { triggerCharacters: ['('] }
   };
 
   return { capabilities };

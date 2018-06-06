@@ -20,7 +20,8 @@ import {
   DocumentHighlightKind,
   CompletionList,
   Position,
-  FormattingOptions
+  FormattingOptions,
+  WorkspaceEdit
 } from 'vscode-languageserver-types';
 import { LanguageMode } from '../languageModes';
 import { VueDocumentRegions, LanguageRange } from '../embeddedSupport';
@@ -53,7 +54,7 @@ export function getJavascriptMode(
       findComponents: () => []
     };
   }
-  const jsDocuments = getLanguageModelCache(10, 60, document => {
+  const embeddedJsRegions = getLanguageModelCache(10, 60, document => {
     const vueDocument = documentRegions.get(document);
     return vueDocument.getEmbeddedDocumentByType('script');
   });
@@ -63,7 +64,7 @@ export function getJavascriptMode(
     return vueDocument.getLanguageRangeByType('script');
   });
 
-  const serviceHost = getServiceHost(workspacePath, jsDocuments);
+  const serviceHost = getServiceHost(workspacePath, embeddedJsRegions);
   const { updateCurrentTextDocument } = serviceHost;
   let config: any = {};
 
@@ -166,6 +167,51 @@ export function getJavascriptMode(
         delete item.data;
       }
       return item;
+    },
+    doRename(doc: TextDocument, position: Position, newName: string): WorkspaceEdit {
+      const { scriptDoc, service } = updateCurrentTextDocument(doc);
+      if (!languageServiceIncludesFile(service, doc.uri)) {
+        return {};
+      }
+
+      const fileFsPath = getFileFsPath(doc.uri);
+      const renameInfo = service.getRenameInfo(fileFsPath, scriptDoc.offsetAt(position));
+
+      if (!renameInfo.canRename) {
+        return {};
+      }
+
+      const locations = service.findRenameLocations(fileFsPath, scriptDoc.offsetAt(position), false, false);
+
+      const edit: WorkspaceEdit = {
+        changes: {}
+      };
+      locations.forEach(l => {
+        let range;
+        let uri;
+        // Local edits in Vue file
+        if (l.fileName === fileFsPath) {
+          range = {
+            start: scriptDoc.positionAt(l.textSpan.start),
+            end: scriptDoc.positionAt(l.textSpan.start + l.textSpan.length)
+          };
+          uri = scriptDoc.uri;
+        } else {
+          range = renameLocationToRange(l);
+          if (!range) {
+            return {};
+          }
+          uri = Uri.file(l.fileName).toString();
+        }
+
+        if (!edit.changes![uri]) {
+          edit.changes![uri] = [TextEdit.replace(range, newName)];
+        } else {
+          edit.changes![uri].push(TextEdit.replace(range, newName));
+        }
+      });
+
+      return edit;
     },
     doHover(doc: TextDocument, position: Position): Hover {
       const { scriptDoc, service } = updateCurrentTextDocument(doc);
@@ -392,15 +438,28 @@ export function getJavascriptMode(
       return findComponents(service, fileFsPath);
     },
     onDocumentRemoved(document: TextDocument) {
-      jsDocuments.onDocumentRemoved(document);
+      embeddedJsRegions.onDocumentRemoved(document);
     },
     onDocumentChanged(filePath: string) {
       serviceHost.updateExternalDocument(filePath);
     },
     dispose() {
       serviceHost.dispose();
-      jsDocuments.dispose();
+      embeddedJsRegions.dispose();
     }
+  };
+}
+
+function renameLocationToRange(location: ts.RenameLocation): Range | null {
+  const fileContent = ts.sys.readFile(location.fileName, 'utf-8');
+  if (!fileContent) {
+    return null;
+  }
+
+  const doc = TextDocument.create(location.fileName, 'ts', 0, fileContent);
+  return {
+    start: doc.positionAt(location.textSpan.start),
+    end: doc.positionAt(location.textSpan.start + location.textSpan.length)
   };
 }
 
